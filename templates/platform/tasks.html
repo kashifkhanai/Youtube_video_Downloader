@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download Tasks</title>
+  <link rel="stylesheet" href="/static/youtube.css" />
+  <link rel="icon" href="/static/images/youtube.png" type="image/png" />
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">
+        <h1>
+          <img src="/static/images/youtube.png" class="icon-logo" alt="YouTube Logo" />
+          Tasks
+        </h1>
+      </div>
+      <div class="navbar-right">
+        <a href="/" class="home-link">Home</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <section>
+      <h2>Download Tasks</h2>
+      <div class="task-controls">
+        <button onclick="bulkAction('resume')">Resume All</button>
+        <button onclick="bulkAction('pause')">Pause All</button>
+        <button onclick="bulkAction('delete', true)">Delete All</button>
+        <button onclick="bulkAction('delete-completed')">Delete Completed</button>
+      </div>
+
+      <div id="task-list"></div>
+    </section>
+  </main>
+
+  <div class="last-updated" id="last-updated">Last updated: just now</div>
+
+<footer>
+  <div class="footer-row">
+    <a href="/contact">Contact Us</a>
+    <span>|</span>
+    <a href="/privacy">Privacy Policy</a>
+    <span>|</span>
+    <a href="mailto:support@example.com">support@example.com</a>
+  </div>
+  <div class="copyright">
+    &copy; 2025 YouTube Downloader. All rights reserved.
+  </div>
+</footer>
+
+
+
+  <script>
+    const defaultThumbnail = '/static/images/default-thumbnail.jpg';
+    let lastUpdated = Date.now();
+
+    async function fetchTasks() {
+      const res = await fetch('/get-tasks');
+      const json = await res.json();
+      const list = document.getElementById('task-list');
+      list.innerHTML = '';
+
+      const tasks = json.tasks || {};
+
+      // ✅ Sort tasks so latest appear on top (based on created_at timestamp if available)
+      const sortedEntries = Object.entries(tasks).sort((a, b) => {
+        const t1 = new Date(b[1].created_at || 0).getTime();
+        const t2 = new Date(a[1].created_at || 0).getTime();
+        return t1 - t2;
+      });
+
+      sortedEntries.forEach(([id, task]) => {
+        const div = document.createElement('div');
+        div.className = 'download-task';
+
+        const statusClass = {
+          running: 'status-running',
+          completed: 'status-completed',
+          paused: 'status-paused',
+          error: 'status-error',
+          deleted: 'status-deleted'
+        }[task.status] || '';
+
+        const progressText = task.progress.includes('Error') ? task.progress : `${task.progress}`;
+        const progressValue = parseFloat(task.progress) || 0;
+        const thumbnail = task.thumbnail_url || defaultThumbnail;
+
+        const previewElement = task.type === 'audio'
+          ? `<div class="audio-label">AUDIO</div>`
+          : `<img src="${thumbnail}" alt="Thumbnail" class="thumbnail" />`;
+
+        div.innerHTML = `
+          ${previewElement}
+          <div class="task-details">
+            <h3>${task.title || task.url}
+              <span class="status-badge ${statusClass}">${task.status}</span>
+            </h3>
+
+            <div class="progress-container">
+              <div class="progress-bar" style="width:${progressValue}%; max-width: 100%">
+                ${progressText}
+              </div>
+            </div>
+
+            <div class="info">
+              <strong>Speed:</strong> ${task.speed || 'N/A'} |
+              <strong>ETA:</strong> ${task.eta || 'N/A'} |
+              <strong>Size:</strong> ${formatSize(task.downloaded_bytes || 0)} / ${formatSize(task.total_bytes || 0)}
+            </div>
+
+            <div class="buttons mt-2">
+              <button onclick="controlTask('${id}', 'pause')" ${['paused', 'completed', 'deleted'].includes(task.status) ? 'disabled' : ''}>Pause</button>
+              <button onclick="controlTask('${id}', 'resume')" ${task.status !== 'paused' ? 'disabled' : ''}>Resume</button>
+              <button onclick="confirmDelete('${id}')">Delete</button>
+            </div>
+          </div>
+        `;
+
+        list.prepend(div); // ✅ Add to top of list
+      });
+
+      document.getElementById('last-updated').textContent =
+        `Last updated: ${Math.floor((Date.now() - lastUpdated) / 1000)} seconds ago`;
+      lastUpdated = Date.now();
+    }
+
+    function formatSize(bytes) {
+      if (!bytes || bytes === 0) return '0 MB';
+      return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    }
+
+    function confirmDelete(taskId) {
+      if (confirm('Are you sure you want to delete this task?')) {
+        controlTask(taskId, 'delete');
+      }
+    }
+
+    async function controlTask(id, action) {
+      await fetch(`/control-task/${id}/${action}`, { method: 'POST' });
+      fetchTasks();
+    }
+
+    async function bulkAction(action, force = false) {
+      const res = await fetch('/get-tasks');
+      const json = await res.json();
+      const tasks = json.tasks || {};
+
+      for (const id in tasks) {
+        const task = tasks[id];
+
+        if (action === 'delete-completed' && task.status !== 'completed') continue;
+        if (action === 'delete' && !force && task.status !== 'completed') continue;
+        if (action === 'pause' && task.status !== 'running') continue;
+        if (action === 'resume' && task.status !== 'paused') continue;
+
+        await fetch(`/control-task/${id}/${action === 'delete-completed' ? 'delete' : action}`, {
+          method: 'POST'
+        });
+      }
+
+      fetchTasks();
+    }
+
+    fetchTasks();
+    setInterval(fetchTasks, 500);
+  </script>
+</body>
+</html>

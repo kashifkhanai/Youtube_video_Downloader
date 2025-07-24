@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>YouTube Video Downloader</title>
+  <link rel="stylesheet" href="/static/youtube.css">
+  <link rel="icon" href="/static/images/youtube.png" type="image/png" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+  
+</head>
+<body>
+  <header>
+    <nav class="navbar bg-dark navbar-dark px-3">
+      <div class="navbar-brand d-flex align-items-center">
+        <img src="/static/images/youtube.png" alt="Logo" class="icon-logo me-2" style="height: 32px;">
+        <span>YouTube Downloader</span>
+      </div>
+      <div class="d-flex">
+        <a href="/" class="btn btn-outline-light me-2">Home</a>
+        <a href="/tasks" class="btn btn-outline-light">Tasks</a>
+      </div>
+    </nav>
+  </header>
+
+  <main class="container mt-5">
+    <h2 class="text-center mb-4">Paste YouTube Link</h2>
+    <form id="link-form" class="row justify-content-center mb-5">
+      <div class="col-md-8">
+        <input type="url" name="video_url" class="form-control" placeholder="Paste YouTube video or playlist link..." required>
+      </div>
+      <div class="col-md-2">
+        <button type="submit" id="fetchBtn" class="btn btn-primary w-100">Detect</button>
+      </div>
+    </form>
+
+    <section id="video-list-section" style="display:none;">
+      <form id="selection-form">
+        <!-- Global selectors -->
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label><strong>Apply Quality to All:</strong></label>
+            <select id="global-quality" class="form-select">
+              <option value="144">144p</option>
+              <option value="240">240p</option>
+              <option value="360">360p</option>
+              <option value="480" selected>480p</option>
+              <option value="720">720p</option>
+              <option value="1080">1080p</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label><strong>Apply Format to All:</strong></label>
+            <select id="global-format" class="form-select">
+              <option value="video" selected>Video</option>
+              <option value="audio">Audio</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-bordered table-hover align-middle text-center">
+            <thead class="table-dark">
+              <tr>
+                <th><input type="checkbox" id="select-all" /></th>
+                <th>Thumbnail</th>
+                <th>Title</th>
+                <th>Duration</th>
+                <th>Quality</th>
+                <th>Format</th>
+              </tr>
+            </thead>
+            <tbody id="video-list"></tbody>
+          </table>
+        </div>
+
+        <div class="text-end">
+          <button type="submit" id="downloadSelectedBtn" class="btn btn-success mt-2">Download Selected</button>
+        </div>
+      </form>
+    </section>
+  </main>
+
+ <footer>
+  <div class="footer-row">
+    <a href="/contact">Contact Us</a>
+    <span>|</span>
+    <a href="/privacy">Privacy Policy</a>
+    <span>|</span>
+    <a href="mailto:support@example.com">support@example.com</a>
+  </div>
+  <div class="copyright">
+    &copy; 2025 YouTube Downloader. All rights reserved.
+  </div>
+</footer>
+
+<script>
+  const linkForm = document.getElementById('link-form');
+  const fetchBtn = document.getElementById('fetchBtn');
+  const videoSection = document.getElementById('video-list-section');
+  const videoList = document.getElementById('video-list');
+  const selectAll = document.getElementById('select-all');
+  const selectionForm = document.getElementById('selection-form');
+  const globalQuality = document.getElementById('global-quality');
+  const globalFormat = document.getElementById('global-format');
+
+  let videos = [];
+
+  linkForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    fetchBtn.disabled = true;
+    fetchBtn.textContent = 'Detecting...';
+    const videoUrl = linkForm.querySelector('input[name="video_url"]').value.trim();
+
+    videos = [];
+    videoList.innerHTML = '';
+    videoSection.style.display = 'none';
+
+    try {
+      const testRes = await fetch('/detect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_url: videoUrl })
+      });
+
+      const testJson = await testRes.json();
+
+      if (testJson.error) {
+        alert(testJson.error);
+      } else if (testJson.type === 'playlist') {
+        videoSection.style.display = 'block';
+        streamDetect(videoUrl);
+      } else if (testJson.type === 'video') {
+        videos = [Object.assign(testJson.video, {
+          qualities: testJson.video.qualities || ["144", "240", "360", "480", "720", "1080"]
+        })];
+        renderVideos(videos);
+      } else {
+        alert("No valid video or playlist found.");
+      }
+    } catch (err) {
+      alert("Failed to detect video.");
+      console.error(err);
+    }
+
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Detect';
+  });
+
+  function streamDetect(videoUrl) {
+    const source = new EventSource(`/detect-playlist-stream?video_url=${encodeURIComponent(videoUrl)}`);
+
+    source.onmessage = (event) => {
+      const video = JSON.parse(event.data);
+      video.qualities = video.qualities || ["144", "240", "360", "480", "720", "1080"];
+      videos.push(video);
+      appendVideo(video, videos.length - 1);
+    };
+
+    source.addEventListener("done", () => {
+      source.close();
+      console.log("✅ Playlist stream complete");
+    });
+
+    source.onerror = (err) => {
+      console.error("SSE error:", err);
+      source.close();
+    };
+  }
+
+  function renderVideos(videoArray) {
+    videoList.innerHTML = '';
+    videoArray.forEach((video, index) => appendVideo(video, index));
+    videoSection.style.display = 'block';
+  }
+
+  function appendVideo(video, index) {
+    const thumbnail = video.thumbnail || '/static/images/default-thumbnail.png';
+    const title = video.title || 'Untitled';
+    const duration = video.duration || 0;
+    const durationFormatted = formatDuration(duration);
+
+    const qualityOptions = video.qualities.map(q => {
+      const selected = q === "480" ? 'selected' : '';
+      return `<option value="${q}" ${selected}>${q}p</option>`;
+    }).join('');
+
+    const row = `
+      <tr>
+        <td><input type="checkbox" name="selected" value="${index}" checked></td>
+        <td><img src="${thumbnail}" alt="Thumbnail" style="width: 100px;"></td>
+        <td>${title}</td>
+        <td>${durationFormatted}</td>
+        <td>
+          <select name="quality-${index}" class="form-select">${qualityOptions}</select>
+        </td>
+        <td>
+          <select name="format-${index}" class="form-select">
+            <option value="video" selected>Video</option>
+            <option value="audio">Audio</option>
+          </select>
+        </td>
+      </tr>`;
+    videoList.insertAdjacentHTML('beforeend', row);
+  }
+
+  function formatDuration(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    return hrs > 0
+      ? `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
+      : `${String(mins)}:${String(secs).padStart(2, '0')}`;
+  }
+
+  selectAll.addEventListener('change', () => {
+    const checkboxes = document.querySelectorAll('input[name="selected"]');
+    checkboxes.forEach(cb => cb.checked = selectAll.checked);
+  });
+
+  globalQuality.addEventListener('change', () => {
+    const newValue = globalQuality.value;
+    document.querySelectorAll('select[name^="quality-"]').forEach(select => {
+      select.value = newValue;
+    });
+  });
+
+  globalFormat.addEventListener('change', () => {
+    const newValue = globalFormat.value;
+    document.querySelectorAll('select[name^="format-"]').forEach(select => {
+      select.value = newValue;
+    });
+  });
+
+  selectionForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const selected = [...document.querySelectorAll('input[name="selected"]:checked')];
+    if (!selected.length) return alert("Please select at least one video.");
+
+    const payload = selected.map(cb => {
+      const index = cb.value;
+      return {
+        ...videos[index],
+        format: document.querySelector(`[name="format-${index}"]`).value,
+        quality: document.querySelector(`[name="quality-${index}"]`).value
+      };
+    });
+
+    try {
+      const res = await fetch('/download-selected', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videos: payload })
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        alert("✅ Selected videos added to tasks!");
+      } else {
+        alert("❌ Error: " + result.error);
+      }
+    } catch (err) {
+      alert("❌ Failed to start download.");
+      console.error(err);
+    }
+  });
+</script>
+</body>
+</html>

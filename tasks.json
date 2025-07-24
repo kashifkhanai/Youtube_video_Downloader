@@ -1,0 +1,36 @@
+{
+  "7b1af786": {
+    "progress": "100%",
+    "filename": "/home/kashif/Downloads/True Stories -  AP Dhillon ｜ Shinda Kahlon (Offici_-wFTG_f-W4c_2.mp4",
+    "url": "https://www.youtube.com/watch?v=-wFTG_f-W4c",
+    "type": "video",
+    "quality": "1080",
+    "format": "video",
+    "title": "True Stories -  AP Dhillon | Shinda Kahlon (Official Music Video)",
+    "status": "completed",
+    "paused": false,
+    "should_abort": false,
+    "thumbnail_path": "thumbnails/7b1af786.webp",
+    "downloaded_bytes": 1970735,
+    "total_bytes": 1970735,
+    "speed": "2516.48 KBps",
+    "eta": "N/A"
+  },
+  "5cd49b0a": {
+    "progress": "100%",
+    "filename": "/home/kashif/Downloads/LAAL PARI (Song)： Yo Yo Honey Singh ｜ Sajid Nadiad_KGn-erOG-Bs_3.mp4",
+    "url": "https://www.youtube.com/watch?v=KGn-erOG-Bs",
+    "type": "video",
+    "quality": "1080",
+    "format": "video",
+    "title": "LAAL PARI (Song): Yo Yo Honey Singh | Sajid Nadiadwala | Tarun Mansukhani | Housefull 5 - 6th June",
+    "status": "completed",
+    "paused": false,
+    "should_abort": false,
+    "thumbnail_path": "thumbnails/5cd49b0a.jpg",
+    "downloaded_bytes": 2987639,
+    "total_bytes": 2987639,
+    "speed": "3971.36 KBps",
+    "eta": "N/A"
+  }
+}
