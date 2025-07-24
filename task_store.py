@@ -8,7 +8,7 @@ task_lock = RLock()
 
 
 def load_tasks():
-    """tasks.json se tasks load karo"""
+    """📥 Load all tasks from tasks.json at startup"""
     global tasks
     if not os.path.exists(TASKS_FILE):
         print("No tasks.json found. Starting with empty task list.")
@@ -36,7 +36,7 @@ def load_tasks():
 
 
 def save_tasks():
-    """Thread-safe save to disk (atomically)"""
+    """💾 Save tasks to disk safely and atomically"""
     try:
         with task_lock:
             tmp_file = TASKS_FILE + ".tmp"
@@ -48,14 +48,14 @@ def save_tasks():
 
 
 def add_task(task_id, task_data):
-    """Naya task add karo"""
+    """➕ Add a new download task"""
     with task_lock:
         tasks[task_id] = task_data
     save_tasks()
 
 
 def update_task(task_id, updates):
-    """Existing task update karo"""
+    """🔄 Update fields of a task"""
     with task_lock:
         if task_id in tasks:
             tasks[task_id].update(updates)
@@ -63,13 +63,13 @@ def update_task(task_id, updates):
 
 
 def delete_task(task_id):
-    """Task permanently delete karo (but keep downloaded file)"""
+    """🗑️ Remove task (but keep downloaded files) and delete thumbnail"""
     with task_lock:
         task = tasks.get(task_id)
         if not task:
             return
 
-        # ✅ Delete thumbnail only
+        # Delete thumbnail file
         thumb_path = task.get("thumbnail_path")
         if thumb_path and os.path.exists(thumb_path):
             try:
@@ -77,14 +77,14 @@ def delete_task(task_id):
                 print(f"[{task_id}] 🗑️ Deleted thumbnail: {thumb_path}")
             except Exception as e:
                 print(f"[{task_id}] ⚠️ Failed to delete thumbnail: {e}")
-
-        # ❌ Do NOT delete downloaded video/audio
+                
+            
         del tasks[task_id]
         save_tasks()
 
 
 def get_all_tasks():
-    """Return all tasks with thumbnail URLs"""
+    """📤 Return all tasks with proper thumbnail URLs"""
     with task_lock:
         result = {}
         for task_id, task in tasks.items():

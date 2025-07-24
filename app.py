@@ -69,6 +69,35 @@ def control_task(task_id, action):
 
         return jsonify({"success": True})
 
+@app.route('/control-task/pause-all', methods=['POST'])
+def pause_all_tasks():
+    with task_lock:
+        for task_id in tasks:
+            if tasks[task_id]['status'] in ('running', 'queued'):
+                tasks[task_id]['paused'] = True
+                tasks[task_id]['status'] = 'paused'
+        save_tasks()
+    return jsonify({"success": True})
+
+@app.route('/control-task/resume-all', methods=['POST'])
+def resume_all_tasks():
+    resumed = 0
+    max_parallel = 4
+
+    with task_lock:
+        for task_id in tasks:
+            task = tasks[task_id]
+            if task.get('paused') and not task.get('should_abort') and task.get('progress') != '100%':
+                task['paused'] = False
+                if resumed < max_parallel:
+                    task['status'] = 'running'
+                    enqueue_download(task_id, task['url'], task['quality'], task['format'])
+                    resumed += 1
+                else:
+                    task['status'] = 'queued'
+        save_tasks()
+
+    return jsonify({"success": True})
 
 @app.route('/download-selected', methods=['POST'])
 def download_selected():
@@ -161,6 +190,7 @@ def detect():
         return jsonify({"error": str(e)}), 500
 
 
+
 @app.route('/detect-playlist-stream')
 def detect_playlist_stream():
     video_url = request.args.get('video_url')
@@ -205,9 +235,11 @@ def detect_playlist_stream():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
+
 @app.route('/thumbnails/<path:filename>')
 def serve_thumbnail(filename):
     return send_from_directory('thumbnails', filename)
+
 
 
 @app.route('/control-task/delete-all', methods=['POST'])
@@ -235,4 +267,4 @@ def privacy():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3454,threaded=True)
+    app.run(host='0.0.0.0', port=3454, threaded=True)

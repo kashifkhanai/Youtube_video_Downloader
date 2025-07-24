@@ -4,16 +4,15 @@ import time
 last_update_times = {}
 
 def get_output_template(filename_dir, stream_type):
-    """Download file ka output path/template"""
+    """📁 Returns yt-dlp output template path based on stream type"""
     if not filename_dir:
         filename_dir = os.getcwd()
-
-    # 🛠️ Use ID to prevent overwrite: allow same video to download again
+    # Always save uniquely using video title and ID
     return os.path.join(filename_dir, '%(title).50s_%(id)s.%(ext)s')
 
 
 def get_postprocessors(stream_type):
-    """Audio/Video ke liye postprocessors"""
+    """🔄 Postprocessing config for audio/video conversion"""
     if stream_type == 'audio':
         return [{
             'key': 'FFmpegExtractAudio',
@@ -23,13 +22,13 @@ def get_postprocessors(stream_type):
     elif stream_type == 'video':
         return [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'  # ✅ fixed typo
+            'preferedformat': 'mp4'  # ✅ Correct key used
         }]
     return []
 
 
 def get_format_string(quality, stream_type):
-    """yt-dlp format string generator based on quality/stream"""
+    """🎚 Format string for yt-dlp based on user quality input"""
     if stream_type == 'audio':
         return 'bestaudio[ext=m4a]/bestaudio'
     elif stream_type in ('video', 'playlist'):
@@ -46,7 +45,7 @@ def get_format_string(quality, stream_type):
 
 
 def format_eta(seconds):
-    """ETA ko readable time format me convert karo"""
+    """⏳ Convert ETA seconds to human-readable time"""
     if not seconds or seconds < 0:
         return "N/A"
     hrs = seconds // 3600
@@ -56,7 +55,7 @@ def format_eta(seconds):
 
 
 def generate_progress_hook(task_id):
-    """Download progress ko real-time update karo"""
+    """🔁 Hook for real-time progress tracking"""
     from task_store import tasks, save_tasks, task_lock
 
     def hook(d):
@@ -70,6 +69,7 @@ def generate_progress_hook(task_id):
             if not task:
                 return
 
+            # 🛑 Handle pause or abort
             if task.get("should_abort"):
                 raise Exception("Download aborted manually")
             if task.get("paused"):
@@ -92,7 +92,7 @@ def generate_progress_hook(task_id):
                 task['status'] = 'completed'
                 task['filename'] = d.get('filename')
 
-            # ✅ Update thumbnail only if no saved thumbnail_path
+            # ✅ Set thumbnail from hook if not already assigned
             if 'thumbnail' in d and d['thumbnail'] and not task.get("thumbnail_path"):
                 task['thumbnail'] = d['thumbnail']
 

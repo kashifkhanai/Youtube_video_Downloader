@@ -30,7 +30,7 @@ def download_thumbnail(thumbnail_url, task_id):
         path = os.path.join("thumbnails", filename)
         os.makedirs("thumbnails", exist_ok=True)
 
-        if os.path.exists(path):  # 🛑 Don't download again if it already exists
+        if os.path.exists(path):
             return f"thumbnails/{filename}"
 
         r = requests.get(thumbnail_url, timeout=5)
@@ -56,7 +56,7 @@ def common_ydl_opts(task_id, output_template, ext, stream_type, quality):
         'postprocessors': get_postprocessors(stream_type),
         'quiet': True,
         'nopart': False,
-        'concurrent_fragment_downloads': 1  # More stable downloads
+        'concurrent_fragment_downloads': 1
     }
 
 def handle_single(video_url, quality, stream_type, task_id):
@@ -77,13 +77,11 @@ def handle_single(video_url, quality, stream_type, task_id):
                     base = os.path.splitext(ydl.prepare_filename(info))[0]
                     filename = f"{base}.{ext}"
 
-                    # 🔁 Check for duplicates and make unique
                     counter = 1
                     while os.path.exists(filename):
                         filename = f"{base}_{counter}.{ext}"
                         counter += 1
 
-                    # Rename the actual downloaded file to match new unique name
                     original_file = os.path.splitext(ydl.prepare_filename(info))[0] + f".{ext}"
                     if original_file != filename and os.path.exists(original_file):
                         os.rename(original_file, filename)
@@ -92,7 +90,6 @@ def handle_single(video_url, quality, stream_type, task_id):
                     print(f"[{task_id}] ⚠️ Could not prepare filename: {e}")
                     filename = None
 
-        # ✅ Only set new thumbnail if one isn't already saved
         thumbnail_path = tasks.get(task_id, {}).get("thumbnail_path")
         if not thumbnail_path:
             thumbnail_url = info.get("thumbnail") if info else None
@@ -114,10 +111,13 @@ def handle_single(video_url, quality, stream_type, task_id):
     except Exception as e:
         print(f"[{task_id}] ❌ Error during single download: {e}")
         with task_lock:
+            task = tasks.get(task_id)
+            if not task:
+                print(f"[{task_id}] ⚠️ Task missing during update")
+                return
             tasks[task_id]['progress'] = f"Error: {str(e)}"
             tasks[task_id]['status'] = 'error'
             save_tasks()
-
 
 def handle_playlist(video_url, quality, stream_type, task_id):
     try:
@@ -158,6 +158,10 @@ def handle_playlist(video_url, quality, stream_type, task_id):
     except Exception as e:
         print(f"[{task_id}] ❌ Error during playlist download: {e}")
         with task_lock:
+            task = tasks.get(task_id)
+            if not task:
+                print(f"[{task_id}] ⚠️ Task missing during update")
+                return
             tasks[task_id]['progress'] = f"Error: {str(e)}"
             tasks[task_id]['status'] = 'error'
             save_tasks()
@@ -167,10 +171,14 @@ def enqueue_download(task_id, video_url, quality, fmt):
         print(f"[{task_id}] 🔄 Inside download_task")
         try:
             with task_lock:
-                if tasks[task_id].get('paused') or tasks[task_id].get('should_abort'):
+                task = tasks.get(task_id)
+                if not task:
+                    print(f"[{task_id}] ❌ Task not found (possibly deleted)")
+                    return
+                if task.get('paused') or task.get('should_abort'):
                     print(f"[{task_id}] ⏸️ Skipped (paused or aborted)")
                     return
-                tasks[task_id]['status'] = 'running'
+                task['status'] = 'running'
                 save_tasks()
 
             if fmt == 'playlist':
@@ -181,9 +189,13 @@ def enqueue_download(task_id, video_url, quality, fmt):
         except Exception as e:
             print(f"[{task_id}] ❌ Unhandled exception in download_task: {e}")
             with task_lock:
-                tasks[task_id]['progress'] = f"Error: {str(e)}"
-                tasks[task_id]['status'] = 'error'
-                save_tasks()
+                task = tasks.get(task_id)
+                if task:
+                    task['progress'] = f"Error: {str(e)}"
+                    task['status'] = 'error'
+                    save_tasks()
+                else:
+                    print(f"[{task_id}] ⚠️ Task already deleted after failure.")
 
     print(f"[{task_id}] 🚀 Task submitted to thread pool.")
     executor.submit(download_task)
