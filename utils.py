@@ -56,7 +56,7 @@ def format_eta(seconds):
 
 
 def generate_progress_hook(task_id):
-    """🔁 Real-time progress tracking and interruption-safe hook"""
+    """⚙️ Generates yt-dlp progress hook for a specific task"""
     from task_store import tasks, save_tasks, task_lock
     import yt_dlp
 
@@ -64,18 +64,29 @@ def generate_progress_hook(task_id):
         current_time = time.time()
         last_time = last_update_times.get(task_id, 0)
         if current_time - last_time < 0.5:
-            return  # Throttle updates to every 0.5s
+            return
 
         with task_lock:
             task = tasks.get(task_id)
             if not task:
                 return
 
-            # 🛑 Abort immediately if user paused, deleted, or marked abort
+            # 🛑 Abort/Pause/Delete Logic: very early cancellation
             if task.get("should_abort") or task.get("paused") or task.get("status") == "deleted":
                 print(f"[{task_id}] ❌ Download cancelled due to abort/pause/delete.")
+
+                # 🧹 Delete current .part file immediately
+                part_path = d.get("filename")
+                if part_path and os.path.exists(part_path):
+                    try:
+                        os.remove(part_path)
+                        print(f"[{task_id}] 🗑️ Deleted part file: {part_path}")
+                    except Exception as e:
+                        print(f"[{task_id}] ⚠️ Could not delete part file: {e}")
+                
                 raise yt_dlp.utils.DownloadCancelled()
 
+            # 🔄 Update Progress
             status = d.get("status")
 
             if status == 'downloading':
@@ -93,7 +104,7 @@ def generate_progress_hook(task_id):
                 task['progress'] = 'Post-processing'
                 task['status'] = 'processing'
 
-            # 📸 Save thumbnail (YT image URL only)
+            # 🔍 Thumbnail
             if 'thumbnail' in d and d['thumbnail'] and not task.get("thumbnail"):
                 task['thumbnail'] = d['thumbnail']
 

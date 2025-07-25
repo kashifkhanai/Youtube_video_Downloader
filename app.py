@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from task_store import tasks, load_tasks, save_tasks, task_lock, delete_task, get_all_tasks, add_task
-from download_manager import enqueue_download, executor
+from custom_downloader import enqueue_custom_download
 from utils import get_output_template
 from download_manager import delete_temp_files
 import yt_dlp
@@ -28,7 +28,7 @@ with task_lock:
         task.pop("should_abort", None)
         if task.get("status") in ("queued", "running") and not task.get("paused"):
             task["status"] = "running"
-            enqueue_download(task_id, task["url"], task["quality"], task["format"])
+            enqueue_custom_download(task_id, task["url"], task["quality"], task["format"])
         elif task.get("paused"):
             task["status"] = "paused"
     save_tasks()
@@ -44,10 +44,7 @@ def shutdown_handler(sig, frame):
                 task["status"] = "paused"
                 task["progress"] = "Paused"
         save_tasks()
-    try:
-        executor.shutdown(wait=False)
-    except Exception:
-        pass
+
     sys.exit(0)
 
 signal.signal(signal.SIGINT, shutdown_handler)
@@ -109,8 +106,7 @@ def control_task(task_id, action):
                 task['paused'] = False
                 task['should_abort'] = False
                 task['status'] = 'running'
-                
-                enqueue_download(task_id, task['url'], task['quality'], task['format'])
+                enqueue_custom_download(task_id, task['url'], task['quality'], task['format'])
 
         elif action == 'delete':
             task['paused'] = True
@@ -119,7 +115,7 @@ def control_task(task_id, action):
 
         save_tasks()
 
-    time.sleep(0.5)  # Allow hooks to process the abort signal
+    time.sleep(0.5)
 
     if action == 'delete':
         with task_lock:
@@ -130,7 +126,7 @@ def control_task(task_id, action):
 
             delete_task(task_id)
 
-
+    
     return jsonify({"success": True})
 
 @app.route('/control-task/delete-all', methods=['POST'])
@@ -177,12 +173,12 @@ def resume_all_tasks():
                 task['should_abort'] = False
                 if resumed < max_parallel:
                     task['status'] = 'running'
-                    enqueue_download(task['id'], task['url'], task['quality'], task['format'])
+                    enqueue_custom_download(task['id'], task['url'], task['quality'], task['format'])
                     resumed += 1
                 else:
                     task['status'] = 'queued'
         save_tasks()
- 
+
     return jsonify({"success": True})
 
 @app.route('/download-selected', methods=['POST'])
@@ -227,7 +223,7 @@ def download_selected():
             'thumbnail_path': thumb_path
         })
 
-        enqueue_download(task_id, video_url, quality, fmt)
+        enqueue_custom_download(task_id, video_url, quality, fmt)
 
     return jsonify(success=True)
 
