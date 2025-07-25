@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, jsonify, Response, stream_wit
 from flask_cors import CORS
 from task_store import tasks, load_tasks, save_tasks, task_lock, delete_task, get_all_tasks, add_task
 from download_manager import enqueue_download, executor
+from utils import get_output_template
+from download_manager import delete_temp_files
 import yt_dlp
 import os
 import uuid
@@ -121,7 +123,13 @@ def control_task(task_id, action):
 
     if action == 'delete':
         with task_lock:
+            task = tasks.get(task_id)
+            if task:
+                temp_path = get_output_template("temp_downloads", task["format"])
+                delete_temp_files(task_id, temp_path)
+
             delete_task(task_id)
+
 
     return jsonify({"success": True})
 
@@ -134,10 +142,15 @@ def delete_all_tasks():
             tasks[task_id]['should_abort'] = True
         save_tasks()
 
-    time.sleep(0.5)
-    with task_lock:
-        for task_id in list(tasks):
-            delete_task(task_id)
+        time.sleep(0.5)
+        with task_lock:
+            for task_id, task in tasks.items():
+                temp_path = get_output_template("temp_downloads", task["format"])
+                delete_temp_files(task_id, temp_path)
+
+            for task_id in list(tasks):
+                delete_task(task_id)
+
     return jsonify({"success": True})
 
 @app.route('/control-task/pause-all', methods=['POST'])
@@ -296,4 +309,4 @@ def serve_thumbnail(filename):
     return send_from_directory("thumbnails", filename)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3450, threaded=True)
+    app.run(host='0.0.0.0', port=3451, threaded=True)
