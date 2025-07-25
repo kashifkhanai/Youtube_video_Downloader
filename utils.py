@@ -7,7 +7,7 @@ def get_output_template(filename_dir, stream_type):
     """📁 Returns yt-dlp output template path based on stream type"""
     if not filename_dir:
         filename_dir = os.getcwd()
-    # Always save uniquely using video title and ID
+    
     return os.path.join(filename_dir, '%(title).50s_%(id)s.%(ext)s')
 
 
@@ -22,60 +22,62 @@ def get_postprocessors(stream_type):
     elif stream_type == 'video':
         return [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'  # ✅ Correct key used
+            'preferedformat': 'mp4'  # yt-dlp requires 'preferedformat'
         }]
     return []
 
 
 def get_format_string(quality, stream_type):
-    """🎚 Format string for yt-dlp based on user quality input"""
+    """🎚 Format string for yt-dlp based on quality input"""
     if stream_type == 'audio':
         return 'bestaudio[ext=m4a]/bestaudio'
+
     elif stream_type in ('video', 'playlist'):
         try:
-            int(quality)
+            int(quality)  # Validate numeric quality like "720"
             return (
                 f"bestvideo[ext=mp4][vcodec^=avc1][height<={quality}]+"
                 f"bestaudio[ext=m4a]/best[ext=mp4]/best"
             )
         except:
             return "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-    else:
-        return "bestvideo+bestaudio"
+
+    return "bestvideo+bestaudio"
 
 
 def format_eta(seconds):
-    """⏳ Convert ETA seconds to human-readable time"""
+    """⏳ Convert ETA seconds to human-readable string"""
     if not seconds or seconds < 0:
         return "N/A"
     hrs = seconds // 3600
     mins = (seconds % 3600) // 60
     secs = seconds % 60
-    return f"{hrs:02}:{mins:02}:{secs:02}" if hrs > 0 else f"{mins:02}:{secs:02}"
+    return f"{hrs:02}:{mins:02}:{secs:02}" if hrs else f"{mins:02}:{secs:02}"
 
 
 def generate_progress_hook(task_id):
-    """🔁 Hook for real-time progress tracking"""
+    """🔁 Real-time progress tracking and interruption-safe hook"""
     from task_store import tasks, save_tasks, task_lock
+    import yt_dlp
 
     def hook(d):
         current_time = time.time()
         last_time = last_update_times.get(task_id, 0)
         if current_time - last_time < 0.5:
-            return
+            return  # Throttle updates to every 0.5s
 
         with task_lock:
             task = tasks.get(task_id)
             if not task:
                 return
 
-            # 🛑 Handle pause or abort
-            if task.get("should_abort"):
-                raise Exception("Download aborted manually")
-            if task.get("paused"):
-                raise Exception("Download paused manually")
+            # 🛑 Abort immediately if user paused, deleted, or marked abort
+            if task.get("should_abort") or task.get("paused") or task.get("status") == "deleted":
+                print(f"[{task_id}] ❌ Download cancelled due to abort/pause/delete.")
+                raise yt_dlp.utils.DownloadCancelled()
 
             status = d.get("status")
+
             if status == 'downloading':
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
@@ -88,12 +90,11 @@ def generate_progress_hook(task_id):
                 task['eta'] = format_eta(d.get('eta')) if d.get('eta') else "N/A"
 
             elif status == 'finished':
-                task['progress'] = '100%'
-                task['status'] = 'completed'
-                task['filename'] = d.get('filename')
+                task['progress'] = 'Post-processing'
+                task['status'] = 'processing'
 
-            # ✅ Set thumbnail from hook if not already assigned
-            if 'thumbnail' in d and d['thumbnail'] and not task.get("thumbnail_path"):
+            # 📸 Save thumbnail (YT image URL only)
+            if 'thumbnail' in d and d['thumbnail'] and not task.get("thumbnail"):
                 task['thumbnail'] = d['thumbnail']
 
             save_tasks()

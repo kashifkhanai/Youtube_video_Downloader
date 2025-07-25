@@ -1,13 +1,19 @@
+/* ===============================
+   🧿 Refined YouTube Downloader UI
+   =============================== */
+
 /* Reset & Base */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scroll-behavior: smooth;
 }
+
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f4f6f8;
-  color: #333;
+  font-family: 'Inter', 'Segoe UI', Tahoma, sans-serif;
+  background: #f4f6f8;
+  color: #1e1e1e;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -15,313 +21,284 @@ body {
 
 /* Navbar */
 .navbar {
-  background-color: #1c1c1c;
-  padding: 14px 28px;
+  background: linear-gradient(to right, #1f2937, #111827);
+  padding: 16px 32px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   color: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
-.navbar .logo h1,
-.navbar .navbar-brand {
+
+.navbar .logo h1 {
   font-size: 24px;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0;
+
 }
+
 .icon-logo {
-  height: 26px;
+  height: 28px;
 }
-.navbar-right a,
-.navbar a.btn {
-  background-color: rgba(255,255,255,0.15);
+
+.navbar-right a {
+  background: transparent;
+  border: 1px solid #ffffff33;
   color: white;
   padding: 8px 16px;
   border-radius: 6px;
-  font-weight: bold;
+  font-weight: 600;
+  margin-left: 8px;
+  transition: all 0.3s;
   text-decoration: none;
-  transition: 0.3s ease;
-  border: none;
-}
-.navbar-right a:hover,
-.navbar a.btn:hover {
-  background-color: rgba(255,255,255,0.25);
 }
 
-/* Main content */
+.navbar-right a:hover {
+  background-color: #374151;
+}
+
+/* Main */
 main {
-  padding: 30px 20px;
+  padding: 30px 16px;
   max-width: 960px;
   margin: 0 auto;
   flex-grow: 1;
 }
+
 h2 {
   font-size: 28px;
-  margin-bottom: 24px;
-  color: #222;
+  margin-bottom: 26px;
+  text-align: center;
+  color: #111;
 }
 
-/* Form & Inputs */
-input[type="url"],
-select,
-button {
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  padding: 10px 12px;
-  font-size: 1rem;
-  transition: 0.3s ease;
-}
-input[type="url"]:focus,
-select:focus {
-  outline: none;
-  border-color: #1565c0;
-  box-shadow: 0 0 4px rgba(21,101,192,0.3);
-}
-
-/* Top Control Buttons */
+/* Controls */
 .task-controls {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
-  margin-bottom: 30px;
-}
-.task-controls button {
-  padding: 10px 18px;
-  background-color: #1565c0;
-  color: white;
-  font-weight: bold;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: background 0.3s ease;
-}
-.task-controls button:hover {
-  background-color: #0d47a1;
+  margin-bottom: 24px;
 }
 
-/* Individual Task */
+.task-controls button {
+  background-color: #2563eb;
+  color: white;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-weight: bold;
+  border: none;
+
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.task-controls button:hover {
+  background-color: #1d4ed8;
+}
+
+/* Download Task Card */
 .download-task {
   display: flex;
   background-color: white;
-  border-radius: 12px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
   padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-  gap: 16px;
+  margin-bottom: 16px;
   align-items: flex-start;
+  gap: 16px;
 }
 
-/* Thumbnail */
-.thumbnail, .audio-label {
-  width: 140px;
-  height: 90px;
-  border-radius: 8px;
+.thumbnail {
+  width: 100px;
+  height: 60px;
   object-fit: cover;
+  border-radius: 6px;
   flex-shrink: 0;
 }
-.audio-label {
-  background-color: #e53935;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: bold;
-  color: white;
-}
 
-/* Task Info */
+
+/* Task Content */
 .task-details {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
+
+/* Title */
 .task-details h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-  color: #111;
+  font-size: 16px;
+  font-weight: 600;
 }
+
+/* Top Row: Status + Buttons */
+.task-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Status Badge */
 .status-badge {
-  font-size: 12px;
-  padding: 2px 10px;
-  margin-left: 10px;
-  border-radius: 12px;
-  vertical-align: middle;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: capitalize;
+  font-weight: 600;
 }
-.status-running { background-color: #ff9800; color: white; }
-.status-completed { background-color: #4caf50; color: white; }
-.status-paused { background-color: #9e9e9e; color: white; }
-.status-error { background-color: #f44336; color: white; }
-.status-deleted { background-color: #607d8b; color: white; }
+
+.status-completed { background-color: #22c55e; color: white; }
+.status-running   { background-color: #f59e0b; color: white; }
+.status-paused    { background-color: #6b7280; color: white; }
+.status-error     { background-color: #ef4444; color: white; }
+.status-deleted   { background-color: #64748b; color: white; }
 
 /* Progress Bar */
 .progress-container {
-  background-color: #e0e0e0;
+  background: #e5e7eb;
+  height: 14px;
   border-radius: 6px;
   overflow: hidden;
-  height: 20px;
-  margin: 10px 0;
+  margin-top: 8px;
 }
+
 .progress-bar {
+  background: linear-gradient(to right, #16a34a, #15803d);
   height: 100%;
-  background-color: #4caf50;
+
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
   text-align: center;
-  line-height: 20px;
+  line-height: 14px;
+  transition: width 0.5s ease-in-out;
+}
+
+/* Info Text */
+.info {
+  font-size: 12px;
+  color: #444;
+}
+
+/* Buttons */
+.buttons {
+
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.buttons button {
+  padding: 6px 10px;
+  background-color: #3b82f6;
   color: white;
   font-size: 13px;
-  font-weight: 600;
-  transition: width 0.4s ease-in-out;
-}
-
-/* Speed/ETA Info */
-.info {
-  font-size: 13px;
-  color: #555;
-}
-
-/* Action Buttons */
-.buttons {
-  margin-top: 10px;
-  display: flex;
-  gap: 12px;
-}
-.buttons button {
-  padding: 8px 14px;
   font-weight: 500;
   border: none;
-  border-radius: 6px;
-  color: white;
-  background-color: #1565c0;
+  border-radius: 5px;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition: background 0.3s;
 }
+
 .buttons button:hover {
-  background-color: #0d47a1;
+  background-color: #2563eb;
 }
+
 .buttons button:disabled {
-  background-color: #ccc;
+  background-color: #cbd5e1;
   cursor: not-allowed;
 }
 
-/* Table styling */
-.table th,
-.table td {
-  vertical-align: middle !important;
-}
-.table th {
-  background-color: #343a40;
-  color: white;
-}
+
 
 /* Footer */
 footer {
-  background-color: #1c1c1c;
-  color: #ccc;
+  background-color: #111827;
+  color: #9ca3af;
   text-align: center;
-  padding: 20px 10px;
+  padding: 12px 10px;
   font-size: 13px;
-  border-top: 1px solid #333;
+  margin-top: auto;
 }
+
 footer .footer-row {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 16px;
-  margin-bottom: 8px;
+  gap: 14px;
+  margin-bottom: 4px;
+  font-size: 13px;
 }
+
 footer a {
-  color: #66b2ff;
+  color: #60a5fa;
   text-decoration: none;
+  font-weight: 500;
 }
+
 footer a:hover {
   text-decoration: underline;
   color: #fff;
 }
+
 footer .copyright {
   font-size: 12px;
-  color: #888;
-  margin-top: 5px;
+  color: #6b7280;
+  margin-top: 2px;
 }
 
-
-/* =======================
-   Contact & Privacy Pages
-   ======================= */
-
-main {
-  padding: 40px 20px;
-  max-width: 900px;
-  margin: 0 auto;
-  flex-grow: 1;
+body.dark-mode {
+  background-color: #1f1f1f;
+  color: #e0e0e0;
 }
 
-main h2 {
-  font-size: 28px;
-  margin-bottom: 20px;
-  color: #222;
-  text-align: center;
+body.dark-mode .navbar {
+  background: linear-gradient(to right, #111, #222);
 }
 
-main p {
-  font-size: 16px;
-  color: #444;
-  line-height: 1.7;
-  margin-bottom: 20px;
+body.dark-mode .download-task,
+body.dark-mode .card {
+  background-color: #2a2a2a;
+  color: #f1f1f1;
+  box-shadow: none;
 }
 
-main ul {
-  padding-left: 20px;
+body.dark-mode .progress-container {
+  background: #444;
 }
 
-main ul li {
-  margin-bottom: 12px;
-  font-size: 15px;
-  color: #333;
+body.dark-mode .progress-bar {
+  background: linear-gradient(to right, #66bb6a, #43a047);
 }
 
-/* Contact Form Styling */
-.contact-form {
-  background: #fff;
-  padding: 24px;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
-  max-width: 600px;
-  margin: 30px auto;
+body.dark-mode .buttons button {
+  background-color: #3949ab;
 }
 
-.contact-form label {
-  display: block;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: #222;
+body.dark-mode .buttons button:hover {
+  background-color: #283593;
 }
 
-.contact-form input,
-.contact-form textarea {
-  width: 100%;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 15px;
-  transition: border 0.3s ease;
+body.dark-mode .form-control,
+body.dark-mode .form-select {
+  background-color: #2e2e2e;
+  color: #f1f1f1;
+  border: 1px solid #555;
 }
 
-.contact-form input:focus,
-.contact-form textarea:focus {
-  border-color: #1565c0;
-  outline: none;
-  box-shadow: 0 0 3px rgba(21,101,192,0.3);
+body.dark-mode footer {
+  background-color: #111;
+  color: #999;
 }
 
-.contact-form button {
-  padding: 10px 20px;
-  background-color: #1565c0;
+body.dark-mode footer a {
+  color: #82b1ff;
+}
+
+body.dark-mode footer a:hover {
   color: white;
-  font-weight: bold;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.3s ease;
-}
-
-.contact-form button:hover {
-  background-color: #0d47a1;
+  
 }

@@ -6,166 +6,168 @@
   <title>Download Tasks</title>
   <link rel="stylesheet" href="/static/youtube.css" />
   <link rel="icon" href="/static/images/youtube.png" type="image/png" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" />
 </head>
 <body>
   <header>
-    <nav class="navbar">
-      <div class="logo">
-        <h1>
-          <img src="/static/images/youtube.png" class="icon-logo" alt="YouTube Logo" />
-          Tasks
-        </h1>
+    <nav class="navbar bg-dark navbar-dark px-3">
+      <div class="navbar-brand d-flex align-items-center">
+        <img src="/static/images/youtube.png" alt="Logo" class="icon-logo me-2" style="height: 32px;">
+        <span>Download Tasks</span>
       </div>
-      <div class="navbar-right">
-        <a href="/" class="home-link">Home</a>
+      <div class="d-flex">
+        <a href="/" class="btn btn-outline-light">Home</a>
+        <button id="themeToggle" class="btn btn-outline-light">🌙</button>
       </div>
     </nav>
   </header>
 
-  <main>
-    <section>
-      <h2>Download Tasks</h2>
-      <div class="task-controls">
-        <button onclick="bulkAction('resume')">Resume All</button>
-        <button onclick="bulkAction('pause')">Pause All</button>
-        <button onclick="bulkAction('delete', true)">Delete All</button>
-        <button onclick="bulkAction('delete-completed')">Delete Completed</button>
-      </div>
+  <main class="container my-4">
+    <h2 class="text-center mb-4">Your Download Queue</h2>
 
-      <div id="task-list"></div>
-    </section>
+    <div class="d-flex justify-content-end mb-3 flex-wrap gap-2">
+      <button class="btn btn-success" onclick="bulkAction('resume')">Resume All</button>
+      <button class="btn btn-warning" onclick="bulkAction('pause')">Pause All</button>
+      <button class="btn btn-danger" onclick="bulkAction('delete', true)">Delete All</button>
+      <button class="btn btn-secondary" onclick="bulkAction('delete-completed')">Delete Completed</button>
+    </div>
+
+    <div id="task-list" class="d-flex flex-column gap-3"></div>
+    <div class="text-end text-muted mt-3" id="last-updated">Last updated: just now</div>
   </main>
 
-  <div class="last-updated" id="last-updated">Last updated: just now</div>
+  <footer class="text-center mt-5">
+    <div class="footer-row mb-2">
+      <a href="/contact">Contact Us</a>
+      <span>|</span>
+      <a href="/privacy">Privacy Policy</a>
+      <span>|</span>
+      <a href="mailto:support@example.com">support@example.com</a>
+    </div>
+    <div class="text-muted mb-3">&copy; 2025 YouTube Downloader. All rights reserved.</div>
+  </footer>
 
-<footer>
-  <div class="footer-row">
-    <a href="/contact">Contact Us</a>
-    <span>|</span>
-    <a href="/privacy">Privacy Policy</a>
-    <span>|</span>
-    <a href="mailto:support@example.com">support@example.com</a>
-  </div>
-  <div class="copyright">
-    &copy; 2025 YouTube Downloader. All rights reserved.
-  </div>
-</footer>
+<script>
+const defaultThumbnail = '/static/images/default-thumbnail.jpg';
+let lastUpdated = Date.now();
 
+async function fetchTasks() {
+  const res = await fetch('/get-tasks');
+  const { tasks = {} } = await res.json();
+  const list = document.getElementById('task-list');
+  list.innerHTML = '';
 
+  const sorted = Object.entries(tasks).sort((a, b) => {
+    const t1 = new Date(b[1].created_at || 0).getTime();
+    const t2 = new Date(a[1].created_at || 0).getTime();
+    return t1 - t2;
+  });
 
-  <script>
-    const defaultThumbnail = '/static/images/default-thumbnail.jpg';
-    let lastUpdated = Date.now();
+  for (const [id, task] of sorted) {
+    const div = document.createElement('div');
+    div.className = 'download-task';
 
-    async function fetchTasks() {
-      const res = await fetch('/get-tasks');
-      const json = await res.json();
-      const list = document.getElementById('task-list');
-      list.innerHTML = '';
+    const statusClass = {
+      running: 'status-running',
+      completed: 'status-completed',
+      paused: 'status-paused',
+      error: 'status-error',
+      deleted: 'status-deleted'
+    }[task.status] || '';
 
-      const tasks = json.tasks || {};
+    const progressText = task.progress.includes('Error') ? task.progress : `${task.progress}`;
+    const progressValue = parseFloat(task.progress) || 0;
+    const thumbnail = task.thumbnail_path || defaultThumbnail;
 
-      // ✅ Sort tasks so latest appear on top (based on created_at timestamp if available)
-      const sortedEntries = Object.entries(tasks).sort((a, b) => {
-        const t1 = new Date(b[1].created_at || 0).getTime();
-        const t2 = new Date(a[1].created_at || 0).getTime();
-        return t1 - t2;
-      });
+    const preview = task.type === 'audio'
+      ? `<div class="audio-label">🎵 AUDIO</div>`
+      : `<img src="${thumbnail}" alt="Thumbnail" class="thumbnail">`;
 
-      sortedEntries.forEach(([id, task]) => {
-        const div = document.createElement('div');
-        div.className = 'download-task';
-
-        const statusClass = {
-          running: 'status-running',
-          completed: 'status-completed',
-          paused: 'status-paused',
-          error: 'status-error',
-          deleted: 'status-deleted'
-        }[task.status] || '';
-
-        const progressText = task.progress.includes('Error') ? task.progress : `${task.progress}`;
-        const progressValue = parseFloat(task.progress) || 0;
-        const thumbnail = task.thumbnail_url || defaultThumbnail;
-
-        const previewElement = task.type === 'audio'
-          ? `<div class="audio-label">AUDIO</div>`
-          : `<img src="${thumbnail}" alt="Thumbnail" class="thumbnail" />`;
-
-        div.innerHTML = `
-          ${previewElement}
-          <div class="task-details">
-            <h3>${task.title || task.url}
-              <span class="status-badge ${statusClass}">${task.status}</span>
-            </h3>
-
-            <div class="progress-container">
-              <div class="progress-bar" style="width:${progressValue}%; max-width: 100%">
-                ${progressText}
-              </div>
-            </div>
-
-            <div class="info">
-              <strong>Speed:</strong> ${task.speed || 'N/A'} |
-              <strong>ETA:</strong> ${task.eta || 'N/A'} |
-              <strong>Size:</strong> ${formatSize(task.downloaded_bytes || 0)} / ${formatSize(task.total_bytes || 0)}
-            </div>
-
-            <div class="buttons mt-2">
-              <button onclick="controlTask('${id}', 'pause')" ${['paused', 'completed', 'deleted'].includes(task.status) ? 'disabled' : ''}>Pause</button>
-              <button onclick="controlTask('${id}', 'resume')" ${task.status !== 'paused' ? 'disabled' : ''}>Resume</button>
-              <button onclick="confirmDelete('${id}')">Delete</button>
-            </div>
+    div.innerHTML = `
+      ${preview}
+      <div class="task-details">
+        <h3>${task.title || task.url}</h3>
+        <div class="task-top">
+          <span class="status-badge ${statusClass}">${task.status}</span>
+          <div class="buttons">
+            <button class="btn btn-warning btn-sm" onclick="controlTask('${id}', 'pause')" ${['paused','completed','deleted'].includes(task.status) ? 'disabled' : ''}>Pause</button>
+            <button class="btn btn-success btn-sm" onclick="controlTask('${id}', 'resume')" ${task.status !== 'paused' ? 'disabled' : ''}>Resume</button>
+            <button class="btn btn-danger btn-sm" onclick="confirmDelete('${id}')">Delete</button>
           </div>
-        `;
+        </div>
+        <div class="progress-container">
+          <div class="progress-bar" style="width: ${progressValue}%">${progressText}</div>
+        </div>
+        <div class="info">
+          <strong>Speed:</strong> ${task.speed || 'N/A'} |
+          <strong>ETA:</strong> ${task.eta || 'N/A'} |
+          <strong>Size:</strong> ${formatSize(task.downloaded_bytes || 0)} / ${formatSize(task.total_bytes || 0)}
+        </div>
+      </div>
+    `;
+    list.appendChild(div);
+  }
 
-        list.prepend(div); // ✅ Add to top of list
-      });
+  document.getElementById('last-updated').textContent =
+    `Last updated: ${Math.floor((Date.now() - lastUpdated) / 1000)} seconds ago`;
+  lastUpdated = Date.now();
+}
 
-      document.getElementById('last-updated').textContent =
-        `Last updated: ${Math.floor((Date.now() - lastUpdated) / 1000)} seconds ago`;
-      lastUpdated = Date.now();
-    }
+function formatSize(bytes) {
+  if (!bytes || bytes === 0) return '0 MB';
+  return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+}
 
-    function formatSize(bytes) {
-      if (!bytes || bytes === 0) return '0 MB';
-      return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
-    }
+function confirmDelete(taskId) {
+  if (confirm('Are you sure you want to delete this task?')) {
+    controlTask(taskId, 'delete');
+  }
+}
 
-    function confirmDelete(taskId) {
-      if (confirm('Are you sure you want to delete this task?')) {
-        controlTask(taskId, 'delete');
-      }
-    }
+async function controlTask(id, action) {
+  await fetch(`/control-task/${id}/${action}`, { method: 'POST' });
+  fetchTasks();
+}
 
-    async function controlTask(id, action) {
-      await fetch(`/control-task/${id}/${action}`, { method: 'POST' });
-      fetchTasks();
-    }
+async function bulkAction(action, force = false) {
+  const res = await fetch('/get-tasks');
+  const { tasks = {} } = await res.json();
 
-    async function bulkAction(action, force = false) {
-      const res = await fetch('/get-tasks');
-      const json = await res.json();
-      const tasks = json.tasks || {};
+  for (const id in tasks) {
+    const task = tasks[id];
+    if (action === 'delete-completed' && task.status !== 'completed') continue;
+    if (action === 'delete' && !force && task.status !== 'completed') continue;
+    if (action === 'pause' && task.status !== 'running') continue;
+    if (action === 'resume' && task.status !== 'paused') continue;
 
-      for (const id in tasks) {
-        const task = tasks[id];
+    await fetch(`/control-task/${id}/${action === 'delete-completed' ? 'delete' : action}`, {
+      method: 'POST'
+    });
+  }
 
-        if (action === 'delete-completed' && task.status !== 'completed') continue;
-        if (action === 'delete' && !force && task.status !== 'completed') continue;
-        if (action === 'pause' && task.status !== 'running') continue;
-        if (action === 'resume' && task.status !== 'paused') continue;
+  fetchTasks();
+}
 
-        await fetch(`/control-task/${id}/${action === 'delete-completed' ? 'delete' : action}`, {
-          method: 'POST'
-        });
-      }
+fetchTasks();
+setInterval(fetchTasks, 1500);
+</script>
 
-      fetchTasks();
-    }
+<script>
+  const toggleBtn = document.getElementById("themeToggle");
+  const currentTheme = localStorage.getItem("theme");
 
-    fetchTasks();
-    setInterval(fetchTasks, 500);
-  </script>
+  if (currentTheme === "dark") {
+    document.body.classList.add("dark-mode");
+    toggleBtn.textContent = "☀️";
+  }
+
+  toggleBtn.addEventListener("click", () => {
+    document.body.classList.toggle("dark-mode");
+    const isDark = document.body.classList.contains("dark-mode");
+    toggleBtn.textContent = isDark ? "☀️" : "🌙";
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+  });
+</script>
+
 </body>
 </html>
