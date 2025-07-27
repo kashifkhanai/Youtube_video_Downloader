@@ -281,18 +281,34 @@ def detect_playlist_stream():
                 yield f"data: {json.dumps({'error': 'Not a playlist'})}\n\n"
                 return
 
-            for entry in info.get("entries", []):
+            for idx, entry in enumerate(info.get("entries", [])):
+                # Step 1: Immediate Metadata
                 video_data = {
+                    "id": idx,
                     "title": entry.get("title"),
                     "duration": entry.get("duration") or 0,
                     "url": entry.get("url") or entry.get("webpage_url"),
-                    "thumbnail": entry.get("thumbnail") or '/static/images/default-thumbnail.png',
+                    "thumbnail": "/static/images/default-thumbnail.png",  # Temp thumbnail
                     "qualities": ["144", "240", "360", "480", "720", "1080"]
                 }
                 yield f"data: {json.dumps(video_data)}\n\n"
-                time.sleep(0.1)
+                time.sleep(0.05)
+
+            # Step 2: Background thumbnail fetch (slow but separate)
+            ydl_opts = {'quiet': True, 'extract_flat': False, 'skip_download': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                for idx, entry in enumerate(info.get("entries", [])):
+                    try:
+                        detailed = ydl.extract_info(entry['url'], download=False)
+                        thumb_url = detailed.get("thumbnail")
+                        if thumb_url:
+                            yield f"event: thumb\ndata: {json.dumps({'id': idx, 'thumbnail': thumb_url})}\n\n"
+                            time.sleep(0.1)
+                    except Exception as inner:
+                        continue
 
             yield "event: done\ndata: end\n\n"
+
         except Exception as e:
             yield f"event: error\ndata: {str(e)}\n\n"
 
@@ -304,5 +320,53 @@ def detect_playlist_stream():
 def serve_thumbnail(filename):
     return send_from_directory("thumbnails", filename)
 
+
+
+
+@app.route('/stream-thumbnails')
+def stream_thumbnails():
+    def generate():
+        # 🔧 Saare video type tasks jinke thumbnail missing ya default hain
+        with task_lock:
+            video_tasks = {
+                task_id: task for task_id, task in tasks.items()
+                if task.get("type") != "audio" and (
+                    not task.get("thumbnail_path") or not os.path.exists(task.get("thumbnail_path"))
+                )
+            }
+
+        ydl_opts = {'quiet': True}
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            for task_id, task in video_tasks.items():
+                try:
+                    info = ydl.extract_info(task["url"], download=False)
+                    thumb_url = info.get("thumbnail")
+                    if thumb_url:
+                        ext = os.path.splitext(thumb_url.split("?")[0])[1]
+                        filename = f"{task_id}{ext}"
+                        path = os.path.join("thumbnails", filename)
+
+                        # 🔧 Check if file already exists before re-downloading
+                        if not os.path.exists(path):
+                            r = requests.get(thumb_url, timeout=5)
+                            if r.status_code == 200:
+                                with open(path, "wb") as f:
+                                    f.write(r.content)
+
+                        with task_lock:
+                            tasks[task_id]["thumbnail_path"] = path
+                            save_tasks()
+
+                        yield f'data: {json.dumps({"id": task_id, "thumbnail": f"/thumbnails/{filename}"})}\n\n'
+                        time.sleep(0.1)
+
+                except Exception:
+                    continue
+
+        yield "event: done\ndata: end\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3451, threaded=True)
+    app.run(host='0.0.0.0', port=3459, threaded=True)

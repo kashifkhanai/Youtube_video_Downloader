@@ -2,7 +2,7 @@ import os
 import json
 import glob
 from threading import RLock
-import time  # Import time module for sleep
+import time
 
 TASKS_FILE = "tasks.json"
 tasks = {}
@@ -103,10 +103,10 @@ def delete_task(task_id):
         if not task:
             return
 
-        # 🛑 Signal background thread to abort immediately
+        
         task["should_abort"] = True
 
-    # Wait for the download thread to terminate
+    
     time.sleep(0.5)  # Allow hooks to process the abort signal
 
     with task_lock:
@@ -116,12 +116,16 @@ def delete_task(task_id):
 
         # Delete thumbnail if exists
         thumb_path = task.get("thumbnail_path")
-        if thumb_path and os.path.exists(thumb_path):
-            try:
-                os.remove(thumb_path)
-                print(f"[{task_id}] 🗑️ Deleted thumbnail: {thumb_path}")
-            except Exception as e:
-                print(f"[{task_id}] ⚠️ Failed to delete thumbnail: {e}")
+        if thumb_path:
+            # Convert relative path if necessary
+            if thumb_path.startswith("/thumbnails/"):
+                thumb_path = thumb_path.lstrip("/")
+            if os.path.exists(thumb_path):
+                try:
+                    os.remove(thumb_path)
+                    print(f"[{task_id}] 🗑️ Deleted thumbnail: {thumb_path}")
+                except Exception as e:
+                    print(f"[{task_id}] ⚠️ Failed to delete thumbnail: {e}")
 
         # Remove all associated temp files
         delete_temp_files_for_task(task)
@@ -138,10 +142,12 @@ def get_all_tasks():
         for task_id, task in tasks.items():
             task_copy = task.copy()
 
-            # Serve thumbnail via relative URL if exists
-            thumb = task_copy.get("thumbnail_path")
-            if thumb and os.path.exists(thumb):
-                task_copy["thumbnail_url"] = "/" + thumb.replace("\\", "/").lstrip("/")
+            # Convert internal thumbnail_path to frontend-accessible thumbnail_url
+            path = task_copy.get("thumbnail_path")
+            if path and os.path.exists(path):
+                if not path.startswith("/thumbnails/"):
+                    path = "/" + path.replace("\\", "/").lstrip("/")
+                task_copy["thumbnail_url"] = path
             else:
                 task_copy["thumbnail_url"] = "/static/images/default-thumbnail.png"
 

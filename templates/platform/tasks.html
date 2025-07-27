@@ -63,7 +63,7 @@ async function fetchTasks() {
     return t1 - t2;
   });
 
-  for (const [id, task] of sorted) {
+  for (const [index, [id, task]] of sorted.entries()) {
     const div = document.createElement('div');
     div.className = 'download-task';
 
@@ -77,11 +77,11 @@ async function fetchTasks() {
 
     const progressText = task.progress.includes('Error') ? task.progress : `${task.progress}`;
     const progressValue = parseFloat(task.progress) || 0;
-    const thumbnail = task.thumbnail_path || defaultThumbnail;
+    const thumbnail = task.thumbnail_url || defaultThumbnail;
 
     const preview = task.type === 'audio'
       ? `<div class="audio-label">🎵 AUDIO</div>`
-      : `<img src="${thumbnail}" alt="Thumbnail" class="thumbnail">`;
+      : `<img id="video-thumb-${id}" src="${thumbnail}" alt="Thumbnail" class="thumbnail">`;
 
     div.innerHTML = `
       ${preview}
@@ -96,7 +96,11 @@ async function fetchTasks() {
           </div>
         </div>
         <div class="progress-container">
-          <div class="progress-bar" style="width: ${progressValue}%">${progressText}</div>
+          <div class="progress">
+            <div class="progress-bar bg-info" role="progressbar" style="width: ${progressValue}%;" aria-valuenow="${progressValue}" aria-valuemin="0" aria-valuemax="100">
+              ${progressText}
+            </div>
+          </div>
         </div>
         <div class="info">
           <strong>Speed:</strong> ${task.speed || 'N/A'} |
@@ -150,6 +154,20 @@ async function bulkAction(action, force = false) {
 
 fetchTasks();
 setInterval(fetchTasks, 1500);
+
+// Lazy load thumbnails via SSE
+const thumbnailStream = new EventSource('/stream-thumbnails');
+thumbnailStream.onmessage = (event) => {
+  try {
+    const { id, thumbnail } = JSON.parse(event.data);
+    const img = document.getElementById(`video-thumb-${id}`);
+    if (img && img.src.includes('default-thumbnail')) {
+      img.src = thumbnail;
+    }
+  } catch (err) {
+    console.error("Thumbnail update failed:", err);
+  }
+};
 </script>
 
 <script>

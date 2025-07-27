@@ -64,7 +64,7 @@
 
     <section id="video-list-section" style="display:none;">
       <form id="selection-form">
-
+        
         <div class="row mb-3">
           <div class="col-md-6">
             <label><strong>Apply Quality to All:</strong></label>
@@ -194,6 +194,7 @@ linkForm.addEventListener('submit', async (e) => {
 });
 
 function streamDetect(videoUrl) {
+  fetchBtn.textContent = 'Detecting...';
   source = new EventSource(`/detect-playlist-stream?video_url=${encodeURIComponent(videoUrl)}`);
   source.onmessage = (event) => {
     const video = JSON.parse(event.data);
@@ -202,12 +203,23 @@ function streamDetect(videoUrl) {
       renderMore();
     }
   };
+  source.addEventListener('thumb', (event) => {
+    const data = JSON.parse(event.data);
+    const imgEl = document.querySelector(`#video-thumb-${data.id}`);
+    if (imgEl && data.thumbnail) {
+      imgEl.src = data.thumbnail;
+    }
+  });
   source.addEventListener('done', () => {
     source.close();
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Detect';
   });
   source.onerror = (err) => {
     console.error("SSE error:", err);
     source.close();
+    fetchBtn.disabled = false;
+    fetchBtn.textContent = 'Detect';
   };
 }
 
@@ -229,7 +241,7 @@ function appendVideo(video, index) {
   const row = `
     <tr>
       <td><input type="checkbox" name="selected" value="${index}" checked></td>
-      <td><img src="${thumbnail}" style="width: 100px;"></td>
+      <td><img id="video-thumb-${index}" src="${thumbnail}" style="width: 100px;"></td>
       <td>${title}</td>
       <td>${durationFormatted}</td>
       <td>
