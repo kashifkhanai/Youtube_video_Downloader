@@ -6,7 +6,7 @@ import shutil
 import glob
 import requests
 from pathlib import Path
-from threading import Event, Thread
+from threading import Thread
 import threading
 
 from task_store import tasks, save_tasks, task_lock
@@ -87,7 +87,7 @@ def start_next_queued_task():
 
 
 def enqueue_download(task_id, video_url, quality, fmt):
-    # External callable for utils.py to trigger download
+    
     enqueue_custom_download(task_id, video_url, quality, fmt)
 
 
@@ -134,6 +134,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                 if not task or task.get("should_abort"):
                     print(f"[{task_id}] 🚩 Aborted before start.")
                     delete_temp_files(task_id, base_template)
+                    start_next_queued_task()  # 🔁 Trigger next download
                     return
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -141,7 +142,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                 info = ydl.extract_info(video_url, download=True)
 
                 if not info:
-                    print(f"[{task_id}] ❌ No info extracted.")
+                
                     raise Exception("No info extracted")
 
                 base = os.path.splitext(ydl.prepare_filename(info))[0]
@@ -152,9 +153,9 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                     if not task or task.get("should_abort") or task.get("status") == "deleted":
                         print(f"[{task_id}] ❌ Aborted mid-download.")
                         delete_temp_files(task_id, base)
+                        start_next_queued_task()  # 🔁 Trigger next download
                         return
 
-                
                 base_name = os.path.splitext(os.path.basename(base))[0]
                 final_path = os.path.join(downloads_dir, f"{base_name}.{ext}")
                 counter = 1
@@ -182,5 +183,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                     task["status"] = "failed"
                     task["progress"] = "Error"
                     save_tasks()
+
+        start_next_queued_task()  # ✅ Always trigger next download
 
     Thread(target=download, daemon=True).start()
