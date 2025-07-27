@@ -13,14 +13,14 @@ def load_tasks():
     """📥 Load all tasks from disk"""
     global tasks
     if not os.path.exists(TASKS_FILE):
-        print("No tasks.json found. Starting with empty task list.")
+        print("📂 No tasks.json found. Starting with empty task list.")
         return
 
     try:
         with open(TASKS_FILE, "r", encoding="utf-8") as f:
             content = f.read().strip()
             if not content:
-                print("tasks.json is empty. Starting fresh.")
+                print("📄 tasks.json is empty. Starting fresh.")
                 return
 
             parsed_data = json.loads(content)
@@ -30,7 +30,7 @@ def load_tasks():
                     tasks.update(parsed_data)
                 print(f"✅ Loaded {len(tasks)} tasks from disk.")
             else:
-                print("⚠️ Invalid tasks.json structure.")
+                print("⚠️ Invalid structure in tasks.json. Ignoring.")
     except Exception as e:
         print(f"[ERROR] Failed to load tasks: {e}")
         with task_lock:
@@ -52,6 +52,10 @@ def save_tasks():
 def add_task(task_id, task_data):
     """➕ Add new task to memory + disk"""
     with task_lock:
+        if task_id in tasks:
+            print(f"⚠️ Task with ID {task_id} already exists. Overwriting.")
+        else:
+            print(f"➕ Adding new task with ID {task_id}.")
         tasks[task_id] = task_data
     save_tasks()
 
@@ -95,30 +99,25 @@ def delete_temp_files_for_task(task):
 
 
 def delete_task(task_id):
-    """
-    🗑️ Full delete of task: abort, temp files, thumbnail
-    """
+    """🗑️ Full delete of task: abort, temp files, thumbnail"""
     with task_lock:
         task = tasks.get(task_id)
         if not task:
             return
 
-        
         task["should_abort"] = True
 
-    
-    time.sleep(0.5)  # Allow hooks to process the abort signal
+    time.sleep(0.5)  # Let active hooks catch the abort signal
 
     with task_lock:
         task = tasks.get(task_id)
         if not task:
             return
 
-        # Delete thumbnail if exists
+        # 🔻 Delete thumbnail file
         thumb_path = task.get("thumbnail_path")
         if thumb_path:
-            # Convert relative path if necessary
-            if thumb_path.startswith("/thumbnails/"):
+            if thumb_path.startswith("/"):
                 thumb_path = thumb_path.lstrip("/")
             if os.path.exists(thumb_path):
                 try:
@@ -127,10 +126,10 @@ def delete_task(task_id):
                 except Exception as e:
                     print(f"[{task_id}] ⚠️ Failed to delete thumbnail: {e}")
 
-        # Remove all associated temp files
+        # 🔻 Delete temp files
         delete_temp_files_for_task(task)
 
-        # Remove from task list
+        # 🔻 Remove from memory and save
         del tasks[task_id]
         save_tasks()
 
@@ -141,15 +140,15 @@ def get_all_tasks():
         result = {}
         for task_id, task in tasks.items():
             task_copy = task.copy()
-
-            # Convert internal thumbnail_path to frontend-accessible thumbnail_url
+          
             path = task_copy.get("thumbnail_path")
+
             if path and os.path.exists(path):
-                if not path.startswith("/thumbnails/"):
-                    path = "/" + path.replace("\\", "/").lstrip("/")
-                task_copy["thumbnail_url"] = path
+                normalized = "/" + path.replace("\\", "/").lstrip("/")
+                task_copy["thumbnail_url"] = normalized
             else:
                 task_copy["thumbnail_url"] = "/static/images/default-thumbnail.png"
 
             result[task_id] = task_copy
+
         return result

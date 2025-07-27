@@ -122,218 +122,200 @@
 
   <div id="toast"></div>
 
-<script>
-const linkForm = document.getElementById('link-form');
-const fetchBtn = document.getElementById('fetchBtn');
-const videoSection = document.getElementById('video-list-section');
-const videoList = document.getElementById('video-list');
-const selectAll = document.getElementById('select-all');
-const selectionForm = document.getElementById('selection-form');
-const globalQuality = document.getElementById('global-quality');
-const globalFormat = document.getElementById('global-format');
-const toast = document.getElementById('toast');
+  <script>
+    const linkForm = document.getElementById('link-form');
+    const fetchBtn = document.getElementById('fetchBtn');
+    const videoSection = document.getElementById('video-list-section');
+    const videoList = document.getElementById('video-list');
+    const selectAll = document.getElementById('select-all');
+    const selectionForm = document.getElementById('selection-form');
+    const globalQuality = document.getElementById('global-quality');
+    const globalFormat = document.getElementById('global-format');
+    const toast = document.getElementById('toast');
 
-let videos = [];
-let renderIndex = 0;
-const BATCH_SIZE = 20;
-let source = null;
+    let videos = [];
+    let renderIndex = 0;
+    const BATCH_SIZE = 20;
+    let source = null;
 
-function showToast(message) {
-  toast.textContent = message;
-  toast.classList.add("show");
-  setTimeout(() => {
-    toast.classList.remove("show");
-  }, 2500);
-}
+    function showToast(message) {
+      toast.textContent = message;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2500);
+    }
 
-linkForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  fetchBtn.disabled = true;
-  fetchBtn.textContent = 'Detecting...';
+    linkForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      fetchBtn.disabled = true;
+      fetchBtn.textContent = 'Detecting...';
 
-  const videoUrl = linkForm.querySelector('input[name="video_url"]').value.trim();
-  videos = [];
-  renderIndex = 0;
-  videoList.innerHTML = '';
-  videoSection.style.display = 'none';
-  if (source) {
-    source.close();
-    source = null;
-  }
+      const videoUrl = linkForm.querySelector('input[name="video_url"]').value.trim();
+      videos = [];
+      renderIndex = 0;
+      videoList.innerHTML = '';
+      videoSection.style.display = 'none';
+      if (source) {
+        source.close();
+        source = null;
+      }
 
-  try {
-    const res = await fetch('/detect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ video_url: videoUrl })
+      try {
+        const res = await fetch('/detect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ video_url: videoUrl })
+        });
+
+        const json = await res.json();
+        if (json.error) {
+          showToast(json.error);
+        } else if (json.type === 'playlist') {
+          videoSection.style.display = 'block';
+          streamDetect(videoUrl);
+          showToast("🎵 Playlist detected — loading videos...");
+        } else if (json.type === 'video') {
+          videos = [json.video];
+          renderMore();
+          videoSection.style.display = 'block';
+          showToast("✅ Video ready to download!");
+        } else {
+          showToast("⚠️ Unsupported or unknown video type.");
+        }
+
+      } catch (err) {
+        showToast("❌ Error detecting video.");
+        console.error(err);
+      }
+
+      fetchBtn.disabled = false;
+      fetchBtn.textContent = 'Detect';
     });
 
-    const json = await res.json();
-    if (json.error) {
-      showToast(json.error);
-    } else if (json.type === 'playlist') {
-      videoSection.style.display = 'block';
-      streamDetect(videoUrl);
-      showToast("🎵 Playlist detected — adding videos to tasks...");
-    } else if (json.type === 'video') {
-      videos = [json.video];
-      renderMore();
-      videoSection.style.display = 'block';
-      showToast("✅ Video added to tasks!");
-    } else {
-      showToast("⚠️ Unsupported or unknown video type.");
+    function streamDetect(videoUrl) {
+      fetchBtn.textContent = 'Detecting...';
+      source = new EventSource(`/detect-playlist-stream?video_url=${encodeURIComponent(videoUrl)}`);
+      source.onmessage = (event) => {
+        const video = JSON.parse(event.data);
+        videos.push(video);
+        if (renderIndex < BATCH_SIZE) renderMore();
+      };
+      source.addEventListener('thumb', (event) => {
+        const data = JSON.parse(event.data);
+        const imgEl = document.querySelector(`#video-thumb-${data.id}`);
+        if (imgEl && data.thumbnail) imgEl.src = data.thumbnail;
+      });
+      source.addEventListener('done', () => {
+        source.close();
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Detect';
+      });
+      source.onerror = (err) => {
+        console.error("SSE error:", err);
+        source.close();
+        fetchBtn.disabled = false;
+        fetchBtn.textContent = 'Detect';
+      };
     }
 
-  } catch (err) {
-    showToast("❌ Error detecting video.");
-    console.error(err);
-  }
-
-  fetchBtn.disabled = false;
-  fetchBtn.textContent = 'Detect';
-});
-
-function streamDetect(videoUrl) {
-  fetchBtn.textContent = 'Detecting...';
-  source = new EventSource(`/detect-playlist-stream?video_url=${encodeURIComponent(videoUrl)}`);
-  source.onmessage = (event) => {
-    const video = JSON.parse(event.data);
-    videos.push(video);
-    if (renderIndex < BATCH_SIZE) {
-      renderMore();
+    function renderMore() {
+      const end = Math.min(renderIndex + BATCH_SIZE, videos.length);
+      for (let i = renderIndex; i < end; i++) appendVideo(videos[i], i);
+      renderIndex = end;
     }
-  };
-  source.addEventListener('thumb', (event) => {
-    const data = JSON.parse(event.data);
-    const imgEl = document.querySelector(`#video-thumb-${data.id}`);
-    if (imgEl && data.thumbnail) {
-      imgEl.src = data.thumbnail;
+
+    function appendVideo(video, index) {
+      const thumbnail = video.thumbnail || '/static/images/default-thumbnail.png';
+      const title = video.title || 'Untitled';
+      const durationFormatted = formatDuration(video.duration || 0);
+      const qualityOptions = (video.qualities || ["144", "240", "360", "480", "720", "1080"])
+        .map(q => `<option value="${q}" ${q === "480" ? 'selected' : ''}>${q}p</option>`)
+        .join('');
+      const row = `
+        <tr>
+          <td><input type="checkbox" name="selected" value="${index}" checked></td>
+          <td><img id="video-thumb-${index}" src="${thumbnail}" alt="Thumbnail for ${title}" style="width: 100px;"></td>
+          <td>${title}</td>
+          <td>${durationFormatted}</td>
+          <td><select name="quality-${index}" class="form-select">${qualityOptions}</select></td>
+          <td>
+            <select name="format-${index}" class="form-select">
+              <option value="video" selected>Video</option>
+              <option value="audio">Audio</option>
+            </select>
+          </td>
+        </tr>`;
+      videoList.insertAdjacentHTML('beforeend', row);
     }
-  });
-  source.addEventListener('done', () => {
-    source.close();
-    fetchBtn.disabled = false;
-    fetchBtn.textContent = 'Detect';
-  });
-  source.onerror = (err) => {
-    console.error("SSE error:", err);
-    source.close();
-    fetchBtn.disabled = false;
-    fetchBtn.textContent = 'Detect';
-  };
-}
 
-function renderMore() {
-  const end = Math.min(renderIndex + BATCH_SIZE, videos.length);
-  for (let i = renderIndex; i < end; i++) {
-    appendVideo(videos[i], i);
-  }
-  renderIndex = end;
-}
-
-function appendVideo(video, index) {
-  const thumbnail = video.thumbnail || '/static/images/default-thumbnail.png';
-  const title = video.title || 'Untitled';
-  const durationFormatted = formatDuration(video.duration || 0);
-  const qualityOptions = (video.qualities || ["144", "240", "360", "480", "720", "1080"])
-    .map(q => `<option value="${q}" ${q === "480" ? 'selected' : ''}>${q}p</option>`)
-    .join('');
-  const row = `
-    <tr>
-      <td><input type="checkbox" name="selected" value="${index}" checked></td>
-      <td><img id="video-thumb-${index}" src="${thumbnail}" style="width: 100px;"></td>
-      <td>${title}</td>
-      <td>${durationFormatted}</td>
-      <td>
-        <select name="quality-${index}" class="form-select">${qualityOptions}</select>
-      </td>
-      <td>
-        <select name="format-${index}" class="form-select">
-          <option value="video" selected>Video</option>
-          <option value="audio">Audio</option>
-        </select>
-      </td>
-    </tr>`;
-  videoList.insertAdjacentHTML('beforeend', row);
-}
-
-document.addEventListener('scroll', () => {
-  const bottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 100;
-  if (bottom && renderIndex < videos.length) {
-    renderMore();
-  }
-});
-
-selectAll.addEventListener('change', () => {
-  document.querySelectorAll('input[name="selected"]').forEach(cb => cb.checked = selectAll.checked);
-});
-
-globalQuality.addEventListener('change', () => {
-  document.querySelectorAll('select[name^="quality-"]').forEach(sel => sel.value = globalQuality.value);
-});
-
-globalFormat.addEventListener('change', () => {
-  document.querySelectorAll('select[name^="format-"]').forEach(sel => sel.value = globalFormat.value);
-});
-
-selectionForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const selected = [...document.querySelectorAll('input[name="selected"]:checked')];
-  if (!selected.length) return showToast("Please select at least one video.");
-
-  const payload = selected.map(cb => {
-    const index = cb.value;
-    return {
-      ...videos[index],
-      format: document.querySelector(`[name="format-${index}"]`).value,
-      quality: document.querySelector(`[name="quality-${index}"]`).value
-    };
-  });
-
-  try {
-    const res = await fetch('/download-selected', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videos: payload })
+    document.addEventListener('scroll', () => {
+      const bottom = window.innerHeight + window.scrollY >= document.body.offsetHeight - 100;
+      if (bottom && renderIndex < videos.length) renderMore();
     });
 
-    const result = await res.json();
-    if (result.success) {
-      showToast(result.message || "✅ Added to tasks!");
-    } else {
-      showToast("❌ " + (result.error || "Something went wrong."));
+    selectAll.addEventListener('change', () => {
+      document.querySelectorAll('input[name="selected"]').forEach(cb => cb.checked = selectAll.checked);
+    });
+
+    globalQuality.addEventListener('change', () => {
+      document.querySelectorAll('select[name^="quality-"]').forEach(sel => sel.value = globalQuality.value);
+    });
+
+    globalFormat.addEventListener('change', () => {
+      document.querySelectorAll('select[name^="format-"]').forEach(sel => sel.value = globalFormat.value);
+    });
+
+    selectionForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const selected = [...document.querySelectorAll('input[name="selected"]:checked')];
+      if (!selected.length) return showToast("Please select at least one video.");
+
+      const payload = selected.map(cb => {
+        const index = cb.value;
+        return {
+          ...videos[index],
+          format: document.querySelector(`[name="format-${index}"]`).value,
+          quality: document.querySelector(`[name="quality-${index}"]`).value
+        };
+      });
+
+      try {
+        const res = await fetch('/download-selected', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videos: payload })
+        });
+
+        const result = await res.json();
+        showToast(result.success ? "✅ Download tasks added!" : "❌ " + (result.error || "Something went wrong."));
+      } catch (err) {
+        showToast("❌ Failed to submit download.");
+        console.error(err);
+      }
+    });
+
+    function formatDuration(sec) {
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
+    }
+  </script>
+
+  <script>
+    const toggleBtn = document.getElementById("themeToggle");
+    const currentTheme = localStorage.getItem("theme");
+
+    if (currentTheme === "dark") {
+      document.body.classList.add("dark-mode");
+      toggleBtn.textContent = "☀️";
     }
 
-  } catch (err) {
-    showToast("❌ Failed to submit download.");
-    console.error(err);
-  }
-});
-
-function formatDuration(sec) {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = sec % 60;
-  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
-}
-</script>
-
-<script>
-  const toggleBtn = document.getElementById("themeToggle");
-  const currentTheme = localStorage.getItem("theme");
-
-  if (currentTheme === "dark") {
-    document.body.classList.add("dark-mode");
-    toggleBtn.textContent = "☀️";
-  }
-
-  toggleBtn.addEventListener("click", () => {
-    document.body.classList.toggle("dark-mode");
-    const isDark = document.body.classList.contains("dark-mode");
-    toggleBtn.textContent = isDark ? "☀️" : "🌙";
-    localStorage.setItem("theme", isDark ? "dark" : "light");
-  });
-</script>
-
+    toggleBtn.addEventListener("click", () => {
+      document.body.classList.toggle("dark-mode");
+      const isDark = document.body.classList.contains("dark-mode");
+      toggleBtn.textContent = isDark ? "☀️" : "🌙";
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    });
+  </script>
 </body>
 </html>

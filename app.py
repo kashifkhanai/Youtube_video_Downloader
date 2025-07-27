@@ -1,9 +1,8 @@
 from flask import Flask, render_template, request, jsonify, Response, stream_with_context, send_from_directory
 from flask_cors import CORS
 from task_store import tasks, load_tasks, save_tasks, task_lock, delete_task, get_all_tasks, add_task
-from custom_downloader import enqueue_custom_download
 from utils import get_output_template
-from download_manager import delete_temp_files
+from download_manager import delete_temp_files, enqueue_custom_download, start_next_queued_task
 import yt_dlp
 import os
 import uuid
@@ -13,6 +12,7 @@ import requests
 import threading
 import signal
 import sys
+import shutil
 
 app = Flask(__name__)
 CORS(app)
@@ -147,9 +147,13 @@ def delete_all_tasks():
             for task_id in list(tasks):
                 delete_task(task_id)
 
-    return jsonify({"success": True})
+    # 🔥 Delete the whole temp_downloads directory and recreate it
+    shutil.rmtree("temp_downloads", ignore_errors=True)
+    os.makedirs("temp_downloads", exist_ok=True)
 
-@app.route('/control-task/pause-all', methods=['POST'])
+    return jsonify({"success": True, "message": "All tasks deleted and temp files cleaned."})
+
+@app.route('/control-task/pause-all-tasks', methods=['POST'])
 def pause_all_tasks():
     with task_lock:
         for task in tasks.values():
@@ -161,25 +165,35 @@ def pause_all_tasks():
         save_tasks()
     return jsonify({"success": True})
 
-@app.route('/control-task/resume-all', methods=['POST'])
-def resume_all_tasks():
-    
-    max_parallel = 4
-    resumed = 0
+@app.route('/control-task/resume-all', methods=['POST'], endpoint='control_task_resume_all_endpoint')
+def resume_all_tasks_unique():
+   
     with task_lock:
-        for task in tasks.values():
-            if task.get('paused') and task.get('progress') != '100%':
-                task['paused'] = False
-                task['should_abort'] = False
-                if resumed < max_parallel:
-                    task['status'] = 'running'
-                    enqueue_custom_download(task['id'], task['url'], task['quality'], task['format'])
-                    resumed += 1
-                else:
-                    task['status'] = 'queued'
+        paused_tasks = [
+            t for t in tasks.values()
+            if t.get('paused') and t.get('progress') != '100%'
+        ]
+
+        # Count currently running
+        running_count = sum(1 for t in tasks.values() if t.get('status') == 'running')
+        available_slots = max(0, 4 - running_count)
+
+        # Set status based on available slots
+        for i, task in enumerate(paused_tasks):
+            task['paused'] = False
+            task['should_abort'] = False
+
+            if i < available_slots:
+                task['status'] = 'running'
+                enqueue_custom_download(task['id'], task['url'], task['quality'], task['format'])
+            else:
+                task['status'] = 'queued'
+
         save_tasks()
 
     return jsonify({"success": True})
+
+
 
 @app.route('/download-selected', methods=['POST'])
 def download_selected():
@@ -368,5 +382,30 @@ def stream_thumbnails():
     return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
+@app.route('/pause_all', methods=['POST'], endpoint='pause_all_tasks_endpoint')
+def pause_all_tasks():
+    with task_lock:
+        for task in tasks.values():
+            if task.get("status") in ("running", "queued"):
+                task['paused'] = True
+                task['status'] = 'paused'
+                task['progress'] = 'Paused'
+                task['should_abort'] = True
+        save_tasks()
+    return jsonify({"success": True, "message": "All tasks paused."})
+
+@app.route('/resume_all', methods=['POST'], endpoint='resume_all_tasks_unique_endpoint')
+def resume_all_tasks_unique():
+    with task_lock:
+        for task_id, task in tasks.items():
+            if task.get("status") == 'paused':
+                task['paused'] = False
+                task['should_abort'] = False
+                task['status'] = 'queued'
+        save_tasks()
+    threading.Thread(target=start_next_queued_task, daemon=True).start()
+    return jsonify({"success": True, "message": "All tasks resumed."})
+
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=3459, threaded=True)
+    app.run(host='0.0.0.0', port=3458, threaded=True)

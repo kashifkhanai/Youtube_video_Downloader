@@ -1,4 +1,4 @@
-# custom_downloader.py
+
 import os
 import yt_dlp
 
@@ -6,7 +6,7 @@ import shutil
 import glob
 import requests
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 import threading
 
 from task_store import tasks, save_tasks, task_lock
@@ -25,6 +25,7 @@ temp_dir = os.path.join(os.getcwd(), "temp_downloads")
 os.makedirs(temp_dir, exist_ok=True)
 os.makedirs("thumbnails", exist_ok=True)
 
+
 def delete_temp_files(task_id, base_path):
     base = os.path.splitext(base_path)[0]
     patterns = [
@@ -35,9 +36,10 @@ def delete_temp_files(task_id, base_path):
         for temp_file in glob.glob(pattern):
             try:
                 os.remove(temp_file)
-                print(f"[{task_id}] 🪟 Deleted temp file: {temp_file}")
+                print(f"[{task_id}] 🧹 Deleted temp file: {temp_file}")
             except Exception as e:
                 print(f"[{task_id}] ⚠️ Failed to delete temp file {temp_file}: {e}")
+
 
 def download_thumbnail(thumbnail_url, task_id):
     try:
@@ -46,10 +48,10 @@ def download_thumbnail(thumbnail_url, task_id):
         ext = os.path.splitext(thumbnail_url.split("?")[0])[1]
         filename = f"{task_id}{ext}"
         path = os.path.join("thumbnails", filename)
-        
+
         if os.path.exists(path):
             return path
-        
+
         r = requests.get(thumbnail_url, timeout=5)
         if r.status_code == 200:
             with open(path, "wb") as f:
@@ -59,7 +61,51 @@ def download_thumbnail(thumbnail_url, task_id):
         print(f"[Thumbnail Warning] {e}")
     return None
 
+
+def check_abort(task_id):
+    with task_lock:
+        task = tasks.get(task_id)
+        if task and (task.get("should_abort") or task.get("paused")):
+            raise yt_dlp.utils.DownloadCancelled()
+
+
+def start_next_queued_task():
+    with task_lock:
+        running_count = sum(1 for t in tasks.values() if t.get("status") == "running")
+        available_slots = max(0, 4 - running_count)
+        queued_tasks = [t for t in tasks.values() if t.get("status") == "queued"]
+
+        for task in queued_tasks[:available_slots]:
+            task_id = task["id"]
+            task["status"] = "running"
+            save_tasks()
+            Thread(
+                target=enqueue_custom_download,
+                args=(task_id, task["url"], task["quality"], task["format"]),
+                daemon=True
+            ).start()
+
+
+def enqueue_download(task_id, video_url, quality, fmt):
+    # External callable for utils.py to trigger download
+    enqueue_custom_download(task_id, video_url, quality, fmt)
+
+
 def enqueue_custom_download(task_id, video_url, quality, fmt):
+    with task_lock:
+        running_count = sum(1 for t in tasks.values() if t.get("status") == "running")
+        task = tasks.get(task_id)
+        if not task:
+            return
+
+        if running_count >= 4:
+            task["status"] = "queued"
+            save_tasks()
+            return
+        else:
+            task["status"] = "running"
+            save_tasks()
+
     def download():
         ext = 'mp3' if fmt == 'audio' else 'mp4'
         temp_output_template = get_output_template(temp_dir, fmt)
@@ -87,6 +133,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                 task = tasks.get(task_id)
                 if not task or task.get("should_abort"):
                     print(f"[{task_id}] 🚩 Aborted before start.")
+                    delete_temp_files(task_id, base_template)
                     return
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -95,7 +142,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
 
                 if not info:
                     print(f"[{task_id}] ❌ No info extracted.")
-                    return
+                    raise Exception("No info extracted")
 
                 base = os.path.splitext(ydl.prepare_filename(info))[0]
                 temp_file = f"{base}.{ext}"
@@ -107,7 +154,7 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                         delete_temp_files(task_id, base)
                         return
 
-                # Move file to final Downloads location
+                
                 base_name = os.path.splitext(os.path.basename(base))[0]
                 final_path = os.path.join(downloads_dir, f"{base_name}.{ext}")
                 counter = 1
@@ -115,62 +162,25 @@ def enqueue_custom_download(task_id, video_url, quality, fmt):
                     final_path = os.path.join(downloads_dir, f"{base_name}_{counter}.{ext}")
                     counter += 1
 
-                if os.path.exists(temp_file):
-                    shutil.move(temp_file, final_path)
-                else:
-                    print(f"[{task_id}] ❌ Missing file during move.")
-                    final_path = None
-
-                delete_temp_files(task_id, base)
+                shutil.move(temp_file, final_path)
+                print(f"[{task_id}] ✅ Download completed: {final_path}")
 
                 with task_lock:
                     task = tasks.get(task_id)
-                    if not task:
-                        return
-                    if task.get("should_abort") or task.get("paused"):
-                        task['progress'] = "Aborted"
-                        task['status'] = 'aborted'
-                    else:
-                        if final_path:
-                            task['filename'] = final_path
-                            task['progress'] = '100%'
-                            task['status'] = 'completed'
-                        else:
-                            task['progress'] = 'Paused'
-                            task['status'] = 'paused'
-
-                    if not task.get("thumbnail_path"):
-                        thumb = download_thumbnail(info.get("thumbnail"), task_id)
-                        if thumb:
-                            task['thumbnail_path'] = thumb
-
-                    save_tasks()
-
-        except yt_dlp.utils.DownloadCancelled:
-            print(f"[{task_id}] ❌ Cancelled by user.")
-            with task_lock:
-                if task_id in tasks:
-                    if tasks[task_id].get("status") == "deleted":
-                        print(f"[{task_id}] 🪟 Cleaning after cancel + delete.")
-                        delete_temp_files(task_id, base_template)
-                        thumb = tasks[task_id].get("thumbnail_path")
-                        if thumb and os.path.exists(thumb):
-                            os.remove(thumb)
-                        tasks.pop(task_id, None)
+                    if task:
+                        task["status"] = "completed"
+                        task["progress"] = "100%"
+                        task["final_path"] = final_path
                         save_tasks()
+
         except Exception as e:
-            print(f"[{task_id}] ❌ Error: {e}")
+            print(f"[{task_id}] ❌ Download failed: {e}")
+            delete_temp_files(task_id, base_template)
             with task_lock:
-                if task_id in tasks:
-                    tasks[task_id]['progress'] = f"Error: {str(e)}"
-                    tasks[task_id]['status'] = 'error'
+                task = tasks.get(task_id)
+                if task:
+                    task["status"] = "failed"
+                    task["progress"] = "Error"
                     save_tasks()
 
-    Event().set()
-    threading.Thread(target=download, daemon=True).start()
-
-def check_abort(task_id):
-    with task_lock:
-        task = tasks.get(task_id)
-        if task and (task.get("should_abort") or task.get("paused")):
-            raise yt_dlp.utils.DownloadCancelled()
+    Thread(target=download, daemon=True).start()

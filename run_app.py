@@ -4,6 +4,8 @@ import threading
 import webbrowser
 import time
 from app import app  # Import your existing Flask app
+from task_store import add_task
+import uuid
 
 def run_server():
     # Start the Flask app on localhost without debug mode
@@ -32,6 +34,32 @@ def open_chrome():
     # Fallback: open in default browser if Chrome not found
     webbrowser.open(url)
 
+def add_dummy_tasks():
+    dummy_tasks = [
+        {
+            "id": str(uuid.uuid4()),
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+            "quality": "720",
+            "format": "video",
+            "status": "queued",
+            "progress": "0%",
+            "paused": False
+        },
+        {
+            "id": str(uuid.uuid4()),
+            "url": "https://www.youtube.com/watch?v=3JZ_D3ELwOQ",
+            "quality": "audio",
+            "format": "audio",
+            "status": "queued",
+            "progress": "0%",
+            "paused": False
+        }
+    ]
+
+    for task in dummy_tasks:
+        add_task(task["id"], task)
+
 if __name__ == '__main__':
+    add_dummy_tasks()
     threading.Thread(target=run_server).start()
     open_chrome()

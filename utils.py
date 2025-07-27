@@ -1,7 +1,10 @@
 import os
 import time
+import yt_dlp
+from task_store import tasks, save_tasks, task_lock
 
 last_update_times = {}
+
 
 def get_output_template(filename_dir, stream_type):
     """📁 Returns yt-dlp output template path based on stream type"""
@@ -22,7 +25,7 @@ def get_postprocessors(stream_type):
     elif stream_type == 'video':
         return [{
             'key': 'FFmpegVideoConvertor',
-            'preferedformat': 'mp4'  # yt-dlp requires 'preferedformat'
+            'preferedformat': 'mp4'
         }]
     return []
 
@@ -31,17 +34,17 @@ def get_format_string(quality, stream_type):
     """🎚 Format string for yt-dlp based on quality input"""
     if stream_type == 'audio':
         return 'bestaudio[ext=m4a]/bestaudio'
-
+    
     elif stream_type in ('video', 'playlist'):
         try:
-            int(quality)  # Validate numeric quality like "720"
+            int(quality)
             return (
                 f"bestvideo[ext=mp4][vcodec^=avc1][height<={quality}]+"
                 f"bestaudio[ext=m4a]/best[ext=mp4]/best"
             )
         except:
             return "bestvideo[ext=mp4][vcodec^=avc1]+bestaudio[ext=m4a]/best[ext=mp4]/best"
-
+    
     return "bestvideo+bestaudio"
 
 
@@ -55,11 +58,16 @@ def format_eta(seconds):
     return f"{hrs:02}:{mins:02}:{secs:02}" if hrs else f"{mins:02}:{secs:02}"
 
 
+def can_start_new_task():
+    """Check if less than 4 downloads are currently running"""
+    with task_lock:
+        return sum(1 for t in tasks.values() if t.get('status') == 'running') < 4
+
+
 def generate_progress_hook(task_id):
     """⚙️ Generates yt-dlp progress hook for a specific task"""
-    from task_store import tasks, save_tasks, task_lock
-    import yt_dlp
 
+   
     def hook(d):
         current_time = time.time()
         last_time = last_update_times.get(task_id, 0)
@@ -71,11 +79,10 @@ def generate_progress_hook(task_id):
             if not task:
                 return
 
-            # 🛑 Abort/Pause/Delete Logic: very early cancellation
+            # 🛑 Abort/Pause/Delete Logic
             if task.get("should_abort") or task.get("paused") or task.get("status") == "deleted":
                 print(f"[{task_id}] ❌ Download cancelled due to abort/pause/delete.")
-
-                # 🧹 Delete current .part file immediately
+                
                 part_path = d.get("filename")
                 if part_path and os.path.exists(part_path):
                     try:
@@ -88,7 +95,7 @@ def generate_progress_hook(task_id):
 
             # 🔄 Update Progress
             status = d.get("status")
-
+            
             if status == 'downloading':
                 downloaded = d.get('downloaded_bytes', 0)
                 total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
@@ -110,5 +117,17 @@ def generate_progress_hook(task_id):
 
             save_tasks()
             last_update_times[task_id] = current_time
+
+            # ✅ Trigger next task if finished
+            if status == 'finished':
+                try:
+                    from download_manager import enqueue_download  # ✅ safe to import here
+                    for next_id, t in tasks.items():
+                        if t['status'] == 'queued' and not t.get('paused') and can_start_new_task():
+                            t['status'] = 'running'
+                            enqueue_download(next_id, t['url'], t['quality'], t['format'])
+                            break
+                except Exception as e:
+                    print(f"[{task_id}] ⚠️ Failed to queue next task: {e}")
 
     return hook
